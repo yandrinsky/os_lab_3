@@ -12,7 +12,8 @@ CRITICAL_SECTION criticalSection;
 
 struct ThreadProps {
     double *resultPI;
-    long startBlock;
+    DWORD  *offset;
+    int startBlock;
     int THREADS_AMOUNT;
 };
 
@@ -23,29 +24,31 @@ struct CalculateResult {
 
 DWORD WINAPI thread(LPVOID param) {
     auto *props = (ThreadProps *) param;
-    long startBlock = props->startBlock;
+    DWORD startBlock = props->startBlock;
+    DWORD *offset = props->offset;
     long THREADS_AMOUNT = props->THREADS_AMOUNT;
     double *resultPI = props->resultPI;
-    long curBlock = startBlock;
 
     double x, pi;
 
-    while (curBlock < N) {
+    while (startBlock < N) {
         pi = 0;
 
-        for (int i = curBlock; (i < curBlock + BLOCK_SIZE) && (i < N); ++i) {
+        for (int i = startBlock; (i < startBlock + BLOCK_SIZE) && (i < N); ++i) {
             x = (i + 0.5) / N;
             pi += (4.0 / (1.0 + x * x)) / N;
         }
 
-        curBlock += THREADS_AMOUNT * BLOCK_SIZE;
 
         EnterCriticalSection(&criticalSection);
 
+        *offset += BLOCK_SIZE;
+        startBlock = *offset;
         *resultPI += pi;
 
         LeaveCriticalSection(&criticalSection);
     }
+
 
     return 0;
 }
@@ -53,6 +56,7 @@ DWORD WINAPI thread(LPVOID param) {
 CalculateResult *calculatePI(int THREADS_AMOUNT) {
     threadsArray = new HANDLE[THREADS_AMOUNT];
     double resultPI = 0;
+    DWORD offset = THREADS_AMOUNT * BLOCK_SIZE;
 
     InitializeCriticalSection(&criticalSection);
 
@@ -61,7 +65,7 @@ CalculateResult *calculatePI(int THREADS_AMOUNT) {
                 NULL,
                 0,
                 thread,
-                new ThreadProps{&resultPI, i * BLOCK_SIZE, THREADS_AMOUNT},
+                new ThreadProps{&resultPI, &offset, BLOCK_SIZE * i,  THREADS_AMOUNT},
                 CREATE_SUSPENDED,
                 NULL
         );
